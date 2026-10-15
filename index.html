@@ -359,122 +359,23 @@ document.addEventListener('click', e => { const el = e.target.closest('.hint[dat
 </script>
 
 <style>
-#bk-gate{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px}
-#bk-gate .card{width:min(420px,100%);padding:28px}
-#bk-gate input{display:block;width:100%;margin:10px 0}
-#bk-tools{display:none;gap:8px;align-items:center;flex-wrap:wrap;margin:12px auto;max-width:1180px}
-#bk-tools .who{margin-right:auto;color:var(--muted)}
-body.bk-locked .wrap{display:none}
+/* Modo de demonstração público: somente visualização, sem acesso ao banco */
+.bk-demo-banner{position:sticky;top:0;z-index:50;background:#fff3cd;color:#654600;text-align:center;padding:10px;font:600 13px system-ui,sans-serif}
+input[data-k],select[data-k],textarea[data-k],button#reset,button#add,button#del,button#save{pointer-events:none;opacity:.6}
 </style>
-<div id="bk-tools"><span class="who" id="bk-who"></span><button class="btn" id="bk-import">Importar JSON</button><input id="bk-file" type="file" accept=".json,application/json" hidden><button class="btn" id="bk-refresh">Atualizar</button><button class="btn" id="bk-logout">Sair</button></div>
-<div id="bk-gate"><div class="card"><h1>BK Produções</h1><p class="lead">Acesso exclusivo à equipe autorizada</p><form id="bk-login"><label>E-mail<input id="bk-email" type="email" required autocomplete="email"></label><label>Senha<input id="bk-password" type="password" required autocomplete="current-password"></label><button class="btn primary" type="submit">Entrar</button></form><button type="button" class="btn" id="bk-forgot">Esqueci minha senha</button><form id="bk-reset-form" style="display:none"><h2>Criar nova senha</h2><label>Nova senha<input id="bk-new-password" type="password" minlength="8" autocomplete="new-password" required></label><label>Confirme a senha<input id="bk-confirm-password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn primary" type="submit">Salvar nova senha</button></form><p id="bk-message" role="status" style="color:var(--muted)"></p><p class="lead">O administrador deve autorizar sua conta no Supabase.</p></div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script>
+<div class="bk-demo-banner">Modo de demonstração — login temporariamente desativado. Alterações e músicas privadas não estão disponíveis.</div>
 <script>
-const bk = window.supabase.createClient('https://fvxuelgtlulbsfgkdujv.supabase.co','sb_publishable_AdpcnI_ITAxh7a1bDiTcLg_LJE3oi0P');
-let bkMember = null;
-document.body.classList.add('bk-locked');
-const msg = t => document.getElementById('bk-message').textContent = t;
-function dataOnly(r){const o={...r};delete o._id;return o;}
-async function persistRow(r){
-  if(!bkMember) return;
-  const id=r._id, data=dataOnly(r);
-  let result;
-  if(id>0) result=await bk.from('bk_songs').update({data,updated_at:new Date().toISOString()}).eq('id',id).select('id').single();
-  else result=await bk.from('bk_songs').insert({data}).select('id').single();
-  if(result.error){toast('Erro ao salvar: '+result.error.message);return;}
-  if(id<=0){r._id=result.data.id;selId=r._id;renderTable();renderSelect();}
-  toast('Alterações salvas online.');
-}
-async function deleteRow(id){
-  const {error}=await bk.from('bk_songs').delete().eq('id',id);
-  if(error){toast('Erro ao excluir: '+error.message);await loadSongs();}
-  else toast('Música excluída online.');
-}
-async function loadSongs(){
-  let all=[],from=0;
-  while(true){
-    const {data,error}=await bk.from('bk_songs').select('id,data').order('id').range(from,from+999);
-    if(error){toast('Erro ao carregar: '+error.message);return;}
-    all.push(...data);
-    if(data.length<1000)break;
-    from+=1000;
-  }
-  rows=all.map(x=>({...x.data,_id:x.id}));
-  nextId=-1;
-  if(!rows.some(x=>x._id===selId))selId=rows[0]?._id??null;
+try {
   showTab('busca');
+} catch(e) {
+  console.warn('Visualização inicial:',e);
 }
-async function enter(){
-  if(bkRecovering)return;
-  const {data:{user}}=await bk.auth.getUser();
-  if(!user){document.body.classList.add('bk-locked');document.getElementById('bk-gate').hidden=false;return;}
-  const {data,error}=await bk.from('bk_members').select('role').eq('user_id',user.id).maybeSingle();
-  if(error||!data){msg('Sua conta ainda não foi autorizada pelo administrador.');await bk.auth.signOut();return;}
-  bkMember=data;
-  document.body.classList.remove('bk-locked');
-  document.getElementById('bk-gate').style.display='none';
-  document.getElementById('bk-tools').style.display='flex';
-  document.getElementById('bk-who').textContent=user.email+' · '+data.role;
-  document.getElementById('bk-import').style.display=data.role==='admin'?'':'none';
-  document.getElementById('reset').style.display='none';
-  await loadSongs();
-}
-document.getElementById('bk-login').addEventListener('submit',async e=>{
-  e.preventDefault();msg('Entrando...');
-  const {error}=await bk.auth.signInWithPassword({email:document.getElementById('bk-email').value,password:document.getElementById('bk-password').value});
-  if(error){msg('Não foi possível entrar: '+error.message);return;}
-  await enter();
-});
-document.getElementById('bk-refresh').onclick=loadSongs;
-document.getElementById('bk-logout').onclick=async()=>{await bk.auth.signOut();location.reload();};
-document.getElementById('bk-import').onclick=()=>document.getElementById('bk-file').click();
-document.getElementById('bk-file').onchange=async e=>{
-  if(bkMember?.role!=='admin')return;
-  const file=e.target.files[0];if(!file)return;
-  let data;
-  try{data=JSON.parse(await file.text());if(!Array.isArray(data))throw Error('JSON deve conter uma lista');}
-  catch(err){toast('Arquivo inválido: '+err.message);return;}
-  if(!confirm('Importar '+data.length+' músicas? Faça isso apenas uma vez para evitar duplicatas.'))return;
-  for(let i=0;i<data.length;i+=100){
-    const chunk=data.slice(i,i+100).map(dataOnly).map(data=>({data}));
-    const {error}=await bk.from('bk_songs').insert(chunk);
-    if(error){toast('Falha na importação: '+error.message);return;}
+document.addEventListener('click',function(e){
+  const el=e.target.closest('button');
+  if(el && /adicionar|excluir|salvar|restaurar|nova música/i.test(el.textContent||'')){
+    e.preventDefault();e.stopImmediatePropagation();
+    alert('Edição desativada na demonstração pública.');
   }
-  await loadSongs();toast('Importação concluída.');
-};
-let bkRecovering = new URLSearchParams(location.hash.slice(1)).get('type')==='recovery' || new URLSearchParams(location.search).get('type')==='recovery';
-function bkShowRecovery(){
-  bkRecovering=true;
-  document.body.classList.add('bk-locked');
-  document.getElementById('bk-gate').style.display='flex';
-  document.getElementById('bk-login').style.display='none';
-  document.getElementById('bk-forgot').style.display='none';
-  document.getElementById('bk-reset-form').style.display='block';
-  msg('Defina uma senha de pelo menos 8 caracteres.');
-}
-bk.auth.onAuthStateChange((event)=>{
-  if(event==='PASSWORD_RECOVERY') bkShowRecovery();
-});
-document.getElementById('bk-forgot').onclick=async()=>{
-  const email=document.getElementById('bk-email').value.trim();
-  if(!email){msg('Digite seu e-mail no campo acima para receber o link.');return;}
-  msg('Enviando link de recuperação...');
-  const {error}=await bk.auth.resetPasswordForEmail(email,{redirectTo:'https://isaacsaprod-hub.github.io/bk-producoes/'});
-  msg(error?'Não foi possível enviar: '+error.message:'Se o e-mail estiver cadastrado, você receberá um link para criar sua senha.');
-};
-document.getElementById('bk-reset-form').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const password=document.getElementById('bk-new-password').value;
-  if(password!==document.getElementById('bk-confirm-password').value){msg('As senhas não coincidem.');return;}
-  msg('Salvando nova senha...');
-  const {error}=await bk.auth.updateUser({password});
-  if(error){msg('Não foi possível salvar: '+error.message);return;}
-  history.replaceState(null,'',location.pathname);
-  bkRecovering=false;
-  document.getElementById('bk-reset-form').style.display='none';
-  msg('Senha criada com sucesso. Abrindo seu painel...');
-  await enter();
-});
-if(bkRecovering)bkShowRecovery();else enter();
+},true);
 </script>
 </body></html>
