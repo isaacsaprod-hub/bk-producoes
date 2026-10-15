@@ -367,7 +367,7 @@ document.addEventListener('click', e => { const el = e.target.closest('.hint[dat
 body.bk-locked .wrap{display:none}
 </style>
 <div id="bk-tools"><span class="who" id="bk-who"></span><button class="btn" id="bk-import">Importar JSON</button><input id="bk-file" type="file" accept=".json,application/json" hidden><button class="btn" id="bk-refresh">Atualizar</button><button class="btn" id="bk-logout">Sair</button></div>
-<div id="bk-gate"><div class="card"><h1>BK Produções</h1><p class="lead">Acesso exclusivo à equipe autorizada</p><form id="bk-login"><label>E-mail<input id="bk-email" type="email" required autocomplete="email"></label><label>Senha<input id="bk-password" type="password" required autocomplete="current-password"></label><button class="btn primary" type="submit">Entrar</button></form><p id="bk-message" role="status" style="color:var(--muted)"></p><p class="lead">O administrador deve autorizar sua conta no Supabase.</p></div></div>
+<div id="bk-gate"><div class="card"><h1>BK Produções</h1><p class="lead">Acesso exclusivo à equipe autorizada</p><form id="bk-login"><label>E-mail<input id="bk-email" type="email" required autocomplete="email"></label><label>Senha<input id="bk-password" type="password" required autocomplete="current-password"></label><button class="btn primary" type="submit">Entrar</button></form><button type="button" class="btn" id="bk-forgot">Esqueci minha senha</button><form id="bk-reset-form" style="display:none"><h2>Criar nova senha</h2><label>Nova senha<input id="bk-new-password" type="password" minlength="8" autocomplete="new-password" required></label><label>Confirme a senha<input id="bk-confirm-password" type="password" minlength="8" autocomplete="new-password" required></label><button class="btn primary" type="submit">Salvar nova senha</button></form><p id="bk-message" role="status" style="color:var(--muted)"></p><p class="lead">O administrador deve autorizar sua conta no Supabase.</p></div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js"></script>
 <script>
 const bk = window.supabase.createClient('https://fvxuelgtlulbsfgkdujv.supabase.co','sb_publishable_AdpcnI_ITAxh7a1bDiTcLg_LJE3oi0P');
@@ -405,6 +405,7 @@ async function loadSongs(){
   showTab('busca');
 }
 async function enter(){
+  if(bkRecovering)return;
   const {data:{user}}=await bk.auth.getUser();
   if(!user){document.body.classList.add('bk-locked');document.getElementById('bk-gate').hidden=false;return;}
   const {data,error}=await bk.from('bk_members').select('role').eq('user_id',user.id).maybeSingle();
@@ -441,6 +442,39 @@ document.getElementById('bk-file').onchange=async e=>{
   }
   await loadSongs();toast('Importação concluída.');
 };
-enter();
+let bkRecovering = new URLSearchParams(location.hash.slice(1)).get('type')==='recovery' || new URLSearchParams(location.search).get('type')==='recovery';
+function bkShowRecovery(){
+  bkRecovering=true;
+  document.body.classList.add('bk-locked');
+  document.getElementById('bk-gate').style.display='flex';
+  document.getElementById('bk-login').style.display='none';
+  document.getElementById('bk-forgot').style.display='none';
+  document.getElementById('bk-reset-form').style.display='block';
+  msg('Defina uma senha de pelo menos 8 caracteres.');
+}
+bk.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY') bkShowRecovery();
+});
+document.getElementById('bk-forgot').onclick=async()=>{
+  const email=document.getElementById('bk-email').value.trim();
+  if(!email){msg('Digite seu e-mail no campo acima para receber o link.');return;}
+  msg('Enviando link de recuperação...');
+  const {error}=await bk.auth.resetPasswordForEmail(email,{redirectTo:'https://isaacsaprod-hub.github.io/bk-producoes/'});
+  msg(error?'Não foi possível enviar: '+error.message:'Se o e-mail estiver cadastrado, você receberá um link para criar sua senha.');
+};
+document.getElementById('bk-reset-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const password=document.getElementById('bk-new-password').value;
+  if(password!==document.getElementById('bk-confirm-password').value){msg('As senhas não coincidem.');return;}
+  msg('Salvando nova senha...');
+  const {error}=await bk.auth.updateUser({password});
+  if(error){msg('Não foi possível salvar: '+error.message);return;}
+  history.replaceState(null,'',location.pathname);
+  bkRecovering=false;
+  document.getElementById('bk-reset-form').style.display='none';
+  msg('Senha criada com sucesso. Abrindo seu painel...');
+  await enter();
+});
+if(bkRecovering)bkShowRecovery();else enter();
 </script>
 </body></html>
